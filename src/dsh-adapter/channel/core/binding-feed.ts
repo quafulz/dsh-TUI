@@ -100,7 +100,7 @@ export function createSessionBatchRouter(deps: {
    * its drop notices could no longer arrive. They join the dock, which never
    * re-sends by itself, and stay across the switch to the next session.
    */
-  const holdOrphans = (ids: ReadonlySet<string> | 'all'): void => {
+  const holdOrphans = (ids: ReadonlySet<string> | 'all', wake = true): boolean => {
     let held = 0
     let changed = false
     deps.state.pending = deps.state.pending.map(item => {
@@ -109,20 +109,35 @@ export function createSessionBatchRouter(deps: {
       if (item.docked !== true) held += 1
       return { ...item, docked: true, orphaned: true }
     })
-    if (!changed) return
+    if (!changed) return false
     if (held > 0) deps.notify?.(t('input-orphans-held', { count: held }), { color: 'warning', timeoutMs: 8000 })
-    deps.state.emit()
+    if (wake) deps.state.emit()
+    return true
+  }
+
+  /**
+   * Everything a session that ended leaves behind (#1651): an open turn's
+   * volatile gates, an automatic compaction's row, and queued previews no
+   * backend will ever run. Idempotent and silent once settled, so the status
+   * re-read below can run it on every tick.
+   */
+  const settleDisposed = (): boolean => {
+    let changed = reconcileRetiredProjection('disposed')
+    // An automatic compaction's `compaction.end` will not come any more
+    // (#1651). A manual one is the transaction's: it retires its own row.
+    if (deps.state.compaction !== undefined && deps.ownsCompactionProgress?.() !== true) {
+      deps.state.compaction = undefined
+      changed = true
+    }
+    if (holdOrphans('all', false)) changed = true
+    return changed
   }
 
   /** `session.status` as the backend reports it. */
   const applyStatus = (status: 'idle' | 'running' | 'requires-action' | 'disposed'): void => {
     if (status === 'disposed') {
       deps.state.status = 'disposed'
-      reconcileRetiredProjection('disposed')
-      // An automatic compaction's `compaction.end` will not come any more
-      // (#1651). A manual one is the transaction's: it retires its own row.
-      if (deps.state.compaction !== undefined && deps.ownsCompactionProgress?.() !== true) deps.state.compaction = undefined
-      holdOrphans('all')
+      settleDisposed()
       deps.state.emit()
       return
     }
@@ -223,7 +238,7 @@ export function createSessionBatchRouter(deps: {
     deps.taskCompletion?.(events, meta, current)
   }
 
-  return { route, reconcileRetiredProjection, turnStarts: (): number => turnStarts, turnEnds: (): number => turnEnds }
+  return { route, reconcileRetiredProjection, settleDisposed, turnStarts: (): number => turnStarts, turnEnds: (): number => turnEnds }
 }
 
 /**
@@ -417,10 +432,15 @@ export function createBindingFeed(ctx: { readonly logger: ChannelHostLogger }, d
     },
   })
 
-  /** Release volatile gates for a turn the backend no longer owns. */
+  /**
+   * Release what a turn the backend no longer owns still holds. A disposed
+   * session also retires its compaction row and holds its queued previews:
+   * this re-read exists precisely because that terminal event was dropped,
+   * so it must leave the same state the event would have (#1651).
+   */
   const reconcile = (status: 'idle' | 'disposed'): boolean => {
     state.status = status
-    const changed = router.reconcileRetiredProjection(status)
+    const changed = status === 'disposed' ? router.settleDisposed() : router.reconcileRetiredProjection(status)
     if (changed) state.emit()
     return changed
   }
