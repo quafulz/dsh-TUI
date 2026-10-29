@@ -224,13 +224,28 @@ try {
   check('quiescent cancellation does not fabricate a transcript row', channel.rows.length === rowsBeforeQuiescentGap)
 
   // A disposed driver is terminal even without an interrupt or `turn/end`.
+  // The dropped event is the whole point of the status re-read, so it must
+  // leave the state the event would have: gates released, and queued
+  // previews no backend will run held in the dock (#1651).
   first.status = 'running'
   first.emit([{ type: 'turn.start', turn: 4, origin: 'user', time: 10 }])
+  const submitsBeforeProbe = first.submits.length
+  channel.submit('queued while the terminal event is dropped')
+  const orphanText = 'queued while the terminal event is dropped'
+  const queuedPreview = await settled(() => channel.pending.some(item => item.text === orphanText))
   const rowsBeforeDisposedGap = channel.rows.length
   first.status = 'disposed'
   check('a disposed driver releases a missed-terminal working gate',
     await settled(() => !channel.working && !channel.cancelPending && channel.status === 'disposed'))
+  check('disposed reconciliation holds the previews the dead backend will never run',
+    queuedPreview && await settled(() => channel.pending.some(item => item.text === orphanText && item.docked === true && item.orphaned === true)))
+  check('… and the user is told they were held', toasts().includes(t('input-orphans-held', { count: 1 })))
   check('disposed reconciliation does not fabricate a transcript row', channel.rows.length === rowsBeforeDisposedGap)
+  // The probe row and its backend copy belong to this check only.
+  const heldId = channel.pending.find(item => item.text === orphanText)?.id
+  if (heldId !== undefined) channel.removePending(heldId)
+  await settled(() => first.submits.some(item => item.input.text === orphanText))
+  first.submits.splice(submitsBeforeProbe)
   first.emit([{ type: 'session.status', status: 'idle' }], { wake: 'none' })
   first.status = 'idle'
 
