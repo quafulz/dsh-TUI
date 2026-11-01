@@ -42,7 +42,7 @@ Resuming a DSH session preserves its recorded reasoning effort (or its live sele
 
 
 - **Pixel whale pet** — three startup intros, click to wake; freezes after the first task.
-- **Launchpad and first-run guide** — every ordinary launch lands on a landing page with a **real input box** (big text + whale + quick actions, dropping whole blocks on short/narrow terminals; whale-girl images use a compact native-canvas footprint instead of leaving a large gap before the title; on by default — /settings `launchpad` off boots straight into chat); command completion matches chat: `Tab` fills the input, `Enter` runs the command and clears it. The first run walks a four-step wizard (API key / language+theme / model+workspace / shortcuts), re-runnable with `/setup`.
+- **Launchpad and first-run guide** — every ordinary launch lands on a landing page with a **real input box** (big text + whale + quick actions, dropping whole blocks on short/narrow terminals; whale-girl images use a compact native-canvas footprint instead of leaving a large gap before the title; on by default — /settings `launchpad` off boots straight into chat); command completion matches chat: `Tab` fills the input, `Enter` runs the command and clears it. The first run walks a four-step wizard (accounts & models / language+theme / model+workspace / shortcuts), re-runnable with `/setup`; its first step signs in to a subscription and catches the models it brings in (none → no question, one → that one, several → you choose), or adds an API key through the `/provider` wizard, which asks which of the enabled models to switch to or keeps the current one.
 - **Terminal-native UI** — streaming Markdown, tool cards, `/` and `@` completion, `#L12-14` ranges, history search, zh/en UI.
 - **Task completion notifications** — DSH, Claude and Codex notify after successful live work settles, with no queued follow-up or active goal. The title is “dsh-TUI · Task complete”; the body shows the latest settled reply as a single-line plain-text preview (Markdown formatting removed, up to 200 characters). OSC 777/9 apply an additional 2048-byte sequence budget, including title and protocol bytes, preserving whole graphemes. No reply shows only the title; BEL only rings. `/settings` → Conversation: `taskNotifications` = `unfocused` (default), `always`, or `off`; `notificationMethod` = `auto` (default), `osc9`, `bel`, or `windows`. Auto uses separate title/body fields on Ghostty/WezTerm (OSC 777) and Kitty (OSC 99); iTerm2/Warp and explicit `osc9` use a title prefix; other terminals ring the bell; delivery follows your terminal's notification/bell settings. On local Windows, `auto` resolves to `windows`, the system's native notifications: a task-completion toast. The first toast registers that user's AppUserModelID under HKCU, the toast appears about 3 seconds after the task ends (the PowerShell cold start that buys the no-extra-install route), and for DSH sessions an enabled, active external DSH notification plugin in the running profile makes dsh-TUI yield to it (no toast, no bell); an installed but disabled plugin does not suppress notifications; if that AppUserModelID cannot be written, the notification falls back to the bell instead of going silent. SSH sessions keep the attached terminal's notification protocol in `auto` mode; explicit `windows` still selects the host's native transport. tmux requires `set -g allow-passthrough on` for OSC notifications and `set -g focus-events on` for focus reporting. Terminals without focus reporting need `always`. Replay, cancellation and failures do not notify. Works in inline and fullscreen modes.
 - **Native cursor** — focused text inputs inherit your terminal's cursor shape, color, blinking, and enabled animation or trail effects in both inline and fullscreen modes. The `/model` picker shows the same cursor during movement between provider tabs, model rows, and effort levels, then hides it after **0.5 seconds at rest**; clipped regions fall back to the model row. The session manager also moves this cursor between the workspace rail, session rows, and search box; typing claims the search caret, and navigation returns it to the focused row. Configure animation and trail effects in your terminal.
@@ -129,7 +129,7 @@ The `deepseek-official` API-key route needs `DEEPSEEK_API_KEY`. On DSH
 and select the separate account route through `/model`. Other supported
 accounts can sign in through `/provider` or `/auth` after startup.
 
-The primary compatibility target is DSH `0.2.1-rc.3`. This adapter supports its
+The primary compatibility target is DSH `0.2.1-rc.5`. This adapter supports its
 Shell API, V4 session messages, declarative presets, and profile-backed settings;
 older supported hosts retain their compatibility paths. See [configuration](docs/configuration.en.md).
 
@@ -185,7 +185,7 @@ source builds, and troubleshooting, including migration from the former
 
 Automation: `dst -p "task"`, `dst run --json`, `dst session list --json`.
 The independent engine does not load the TUI or inherit its profile/preferences;
-it uses official DSH headless/services (validated on 0.2.0-rc.2, 0.2.1-rc.2 and 0.2.1-rc.3).
+it uses official DSH headless/services (validated on 0.2.0-rc.2, 0.2.1-rc.2, 0.2.1-rc.3, 0.2.1-rc.4 and 0.2.1-rc.5).
 `dst cli --help` lists its commands; `dst dsh <argv...>` forwards native DSH.
 See [Automation CLI](docs/cli.en.md) for protocol, limits, resume restrictions,
 and Node/Python/PowerShell integration examples.
@@ -366,7 +366,7 @@ team record stays in the session and comes back when the bundle is enabled
 again.
 
 If the running DSH does not ship the bundle (`/plugin list` stays silent),
-switch DSH to one of the supported lines first (`0.2.1-rc.3`, `0.2.1-rc.2`, `0.2.1-alpha.5`,
+switch DSH to one of the supported lines first (`0.2.1-rc.5`, `0.2.1-rc.4`, `0.2.1-rc.3`, `0.2.1-rc.2`, `0.2.1-alpha.5`,
 `0.2.0-rc.1` or `0.2.0-rc.2`). To install it into the profile explicitly,
 run `dsh plugin --profile dsh-tui add @deepseek-ai/dsh-experimental-agent-team-profile@<your-dsh-version>`:
 the team packages ship in lockstep with DSH and pin their DSH peers exactly,
@@ -386,7 +386,11 @@ panel switch to a team view: each teammate under its member name with
 `running` / `idle` / `provisioning` / `failed` (a teammate whose turn ended
 is idle — a message wakes it — not done), the Lead line, the remaining
 subagents, a read-only task board (status, owner, `blocked`, write-scope
-warnings) and a banner when the team record was rejected.
+warnings) and a banner when the team record was rejected. A delegation
+provider whose settled runs fail at least twice and at least half the time
+gets one degraded-channel line above the list; the built-in `subagent` route,
+workflow members and per-type Claude children are excluded because there is
+no provider to switch to.
 
 Limits: the switch covers the whole profile, not one session (a launch
 without the profile plugin service, or without hot reload, needs `dsh plugin`
@@ -489,6 +493,12 @@ Removing a workspace registration keeps its sessions accessible under a "History
 History-only directories offer edit and new-session actions; rename and remove are available for registered workspaces.
 
 If a `/resume` attempt fails or is cancelled before switching, it releases any session occupancy acquired by that attempt so the session can be retried.
+
+On Linux, stale TUI occupancy and mount locks can be reclaimed when the old PID
+has been reused by a non-leader thread. This requires readable `/proc` identity
+data in the same PID namespace; uncertain identities remain occupied. Reuse by
+another process can still retain a stale claim, so this is not a general fix for
+PID reuse across platforms.
 
 **Background jobs**: card headers open the focused task panel. Click the card body or use `Ctrl+O` to toggle the command between its first statement and full script. Commands and output use separate colored edges with `❯` (`>` on Windows) and `≡` on their first rows; output always stays at the latest two visible rows. `/jobs` and the side panel keep the full output scrollable, while `e` toggles the focused command. Consecutive blank script lines collapse to one.
 

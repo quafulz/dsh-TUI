@@ -144,10 +144,16 @@ results back to the chat screen and add no new behavior.
   and opens the same kernel picker (keyboard path =
   focus ring + `Enter`). Every row ends flush at the same right edge, the cwd plate is top-aligned to the
   first row, and narrow terminals truncate per the existing truncate-middle contract.
-- **Wizard**: `←`/`→` change step (except the effort slider in step 3 and a drilled-in model list, where the
-  horizontal keys belong to the child control), `Tab` switches between the language/theme and
-  model/effort/workspace panes, `↑`/`↓` move the selection; `Enter` runs the step (step 1 = re-check
-  connectivity, step 3 = drill into a provider / switch model / open the workspace picker — **effort is not
+- **Wizard**: `←`/`→` change step (except step 3's effort slider, a drilled-in model list and step 1's
+  access sub-layer, where the horizontal keys belong to the child control), `Tab` switches between the language/theme and
+  model/effort/workspace panes, `↑`/`↓` move the selection; `Enter` runs the step (step 1 = act on the
+  focused action row — sign in to a subscription / add a provider (API key) / check again / skip this step;
+  both sign-in and key entry ride the shared question panel, which takes over the whole terminal and then
+  remounts the guide exactly where it was (progress lives in `src/onboardingDraft.ts`); after a sign-in
+  with several new models an inline default picker (single choice) appears: `↑`/`↓` move, `Enter` sets the
+  default, the last row "Keep the current model" leaves it alone, and `Esc` means the same and only pops
+  that layer. Step 3 = drill into a provider /
+  switch model / open the workspace picker — **effort is not
   on Enter**, it is `←`/`→` only and applies as you move); the theme pane previews on cursor move while the
   **language pane applies on `Enter`**; `Enter` on the last step finishes and records the guide when the
   focused card is a shortcut card, and tries the command when it is a command card; `Esc` skips
@@ -335,10 +341,12 @@ While the model is working, three paths have different placement:
     Claude CLI that cannot withdraw them, or when the withdrawal request fails,
     the backend still runs them next turn; dsh-TUI stops holding them, says so,
     and never sends them twice.
-  - Messages the backend dropped without running them (the session ended
-    unexpectedly, or the backend discarded them) are held as "not delivered",
-    never re-sent by themselves, and stay for the next session; on DSH, a
-    message submitted after the session ended is held the same way. While the session
+  - Messages the DSH kernel dropped without running them (the session ended
+    unexpectedly, or the kernel discarded them) are held as "not delivered";
+    Claude and Codex still report such losses as discarded, so those are not
+    held. Held messages are never re-sent by themselves and stay for the next
+    session; on DSH, a message submitted after the session ended is held the
+    same way. While the session
     is ended `⏎` sends nothing: `/new` starts a new session and `⏎` sends them
     there, or `/restart` resumes this one (only text survives a restart).
     Images attached to a held message stay with it into the next session. A held
@@ -492,7 +500,7 @@ Notes:
   and never reaches the main context or token counts (closing the panel discards it).
 - **Never interrupts the running turn**: it can be triggered while the model is streaming; the main task keeps going.
 - Inside the panel: `↑`/`↓` scroll, `Space`/`Enter`/`Esc` dismiss, `c` copies the answer; `Esc` cancels while the answer is still pending.
-- The sidebar panel (when the panel column is open) has two layers: the default **reading layer** — `←`/`→` switch panels, `↑`/`↓` move the **selection** between turns, `PgUp`/`PgDn` page, `n` starts a new topic, `s` sends the **selected** turn's answer to the main composer (press `s` again to take it back), `c` copies the selected turn's answer; `Enter`/`Tab` (or a click on the input) enters the **editing layer** (`Esc` leaves one layer at a time: editing first, draft kept), where `←`/`→` move the caret first and, once the caret sits at the start/end, the same key falls through and switches panels again, while `↑` goes straight back up to the titles.
+- The sidebar panel (when the panel column is open) has two layers: the default **reading layer** — `←`/`→` switch panels, `↑`/`↓` move the **selection** between turns, `PgUp`/`PgDn` page, `n` starts a new topic, `s` sends the **selected** turn's answer to the main composer (press `s` again to take it back), `c` copies the selected turn's answer; `Enter`/`Tab` (or a click on the input) enters the **editing layer** (`Esc` leaves one layer at a time: editing first, draft kept), where `←`/`→` move the caret first and, once the caret sits at the start/end, the same key falls through and switches panels again, while `↑` goes straight back up to the titles. In the editing layer `Ctrl+V`/`Alt+V` pastes clipboard text at the caret (terminal-native paste works too, flattened to one line), and it always lands in the btw composer — with the column focused, paste **never** writes into the main draft below. A clipboard holding an image or files is refused with "not pastable as text".
 - The sidebar's bottom hint line **follows the layer** (the panel advertises it, the host only stitches it): with the cursor in the **list** it says `↑/↓ select · s to chat · c copy` (or `s unsend` for the attached turn); with the cursor in the **input** it drops s/c (there `s` is just a letter) and says `↑ select` instead. An empty thread advertises nothing there. The input box keeps only an `Enter to ask` placeholder.
 - The selection shows itself in exactly two ways: the title's **text** is inverted (not the whole row) and the terminal cursor parks on that row — so `↑`/`↓` visibly walks the native caret between titles. Both are hidden while the cursor sits in the main input or the side composer: they mean "the list owns the keyboard". **Clicking a title row** moves the selection there too.
 - Scrolling only happens when it must: a target title already inside the viewport scrolls nothing at all; one outside it scrolls just far enough to **exactly reveal** that row (flush to the top edge when walking up, flush to the bottom edge when walking down).
